@@ -1,23 +1,92 @@
-from aiogram import Bot, Dispatcher, executor, types
-import os
-from keep_alive import keep_alive
+import telebot
+from telebot import types
 
-keep_alive()
+# Replace with your bot token and target channel ID
+bot = telebot.TeleBot('7454404106:AAFBYCcYqQT5oyZ0pbpKGly6W_xoQzt3S00')
+target_channel = '@RobinhoodxD_Reviews'
 
-bot = Bot(token=os.environ.get('7454404106:AAFBYCcYqQT5oyZ0pbpKGly6W_xoQzt3S00'))
-dp = Dispatcher(bot)
+def extract_rating(text):
+    """Extracts the rating from the user's review, handling potential errors gracefully.
 
-@dp.message_handler(commands=['start', 'help'])
-async def welcome(message: types.Message):
-    await message.reply("Hello! I'm Gunther Bot, Please follow my YT channel 🐍")
+    Args:
+        text (str): The user's review message.
 
-@dp.message_handler(commands=['logo'])
-async def logo(message: types.Message):
-    await message.answer_photo("https://avatars.githubusercontent.com/u/62064649?v=4")
+    Returns:
+        int: The extracted rating (1-5) or None if invalid.
+    """
+    try:
+        # Split the text by spaces, taking the last word as the potential rating
+        potential_rating = text.split()[-1]
+        rating = int(potential_rating)
 
-@dp.message_handler()
-async def echo(message: types.Message):
-    await message.reply(message.text)
+        if 1 <= rating <= 5:
+            return rating
+        else:
+            return None  # Invalid rating range
 
-if __name__ == '__main__':
-    executor.start_polling(dp)
+    except ValueError:
+        # Not a valid number, consider more sophisticated extraction if needed
+        return None
+
+def format_review(text, rating, name):
+    """Formats the review message with the extracted rating (or placeholder if not found).
+
+    Args:
+        text (str): The user's review message.
+        rating (int or None): The extracted rating or None if not valid.
+        name (str): The name of the customer.
+
+    Returns:
+        str: The formatted review message with rating stars.
+    """
+    # Create a colored rating representation
+    star_full = '⭐'
+    star_empty = '☆'
+    stars = star_full * rating + star_empty * (5 - rating)
+    
+    # Escape special characters for Markdown
+    escaped_name = name.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]')
+    escaped_text = text.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]')
+    
+    # Format the review message
+    return (
+        f"*REVIEWS:*\n"
+        f"Customer: {escaped_name}\n"
+        f"Feedback: {escaped_text}\n"
+        f"RATING: {stars}"
+    )
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    """Handles the /start command, prompting the user to submit a review."""
+    print("Start command received")
+    bot.send_message(message.chat.id, "Welcome! Please use /review to submit your review and rating.")
+
+@bot.message_handler(commands=['review'])
+def review(message):
+    print("Review command received")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    itembtn1 = types.KeyboardButton("Submit Review")
+    markup.add(itembtn1)
+    bot.send_message(message.chat.id, "Please submit your review and rating (e.g., 'Product is great 5'):", reply_markup=markup)
+
+@bot.message_handler(func=lambda message: True)
+def handle_review(message):
+    print(f"Received message: {message.text}")
+    # Extract rating from message
+    rating = extract_rating(message.text)
+    # Remove rating from the message for clean formatting
+    review_text = ' '.join(message.text.split()[:-1])
+    customer_name = message.from_user.first_name or message.from_user.username or "Anonymous"
+    formatted_review = format_review(review_text, rating, customer_name)
+    print(f"Formatted review: {formatted_review}")
+
+    try:
+        bot.send_message(target_channel, formatted_review, parse_mode='Markdown')
+        print(f"Review sent to channel: {target_channel}")
+        bot.send_message(message.chat.id, "Thank you for your review!")
+    except Exception as e:
+        print(f"Error sending review: {e}")
+        bot.send_message(message.chat.id, "An error occurred. Please try again later.")
+
+bot.polling()
